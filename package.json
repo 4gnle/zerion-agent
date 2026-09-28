@@ -1,0 +1,38 @@
+{
+  "name": "half",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:browser": "playwright test",
+    "test:intent:live": "node --env-file=.env.local --import tsx scripts/intent-smoke.ts",
+    "probe": "node --env-file=.env.local scripts/probe-zerion.mjs"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "next": "16.3.6",
+    "openai": "7.23.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "0.0.1",
+    "viem": "2.56.9",
+    "wagmi": "3.7.7",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}
