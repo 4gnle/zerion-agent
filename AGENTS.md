@@ -1,6 +1,6 @@
 # Build contract
 
-Build **Half**, the narrow conversational swap demo in this repository. Target: a recordable interview demo in two working days, using the existing Codex subscription and a small separately authorized OpenAI API budget. These are project requirements, not permission to bypass the agent's platform rules.
+Build **Wallet Agent**, the narrow conversational swap demo in this repository. Target: a recordable interview demo in two working days, using the existing Codex subscription and a small separately authorized OpenAI API budget. These are project requirements, not permission to bypass the agent's platform rules.
 
 ## Read efficiently
 
@@ -11,10 +11,10 @@ Build **Half**, the narrow conversational swap demo in this repository. Target: 
 
 ## Non-negotiable scope
 
-- One page; Base mainnet; native Circle USDC sold for native ETH; same connected wallet receives output.
-- English commands: half, whole integer percentages, or exact decimal USDC amounts. One OpenAI structured extraction call; deterministic validation; no open-ended conversation.
+- One page; ETH → native USDC swap on Arbitrum, or native ETH bridge from Ethereum to Arbitrum; same wallet receives output. Header network selector and balances support Ethereum/Arbitrum; history covers all wallet networks.
+- English commands: half, whole integer percentages, or exact decimal ETH amounts (18 decimals, 0.002 ETH cap, gas reserve required). One OpenAI structured extraction call; deterministic validation; no open-ended conversation.
 - Next.js App Router + TypeScript + CSS + wagmi + viem + TanStack Query + Zod + OpenAI SDK. Use npm and one lockfile. Use stable compatible packages; verify installed major-version APIs once.
-- Injected desktop EOA wallet only. No WalletConnect, mobile connection, smart accounts, permits, bridges, backend signing, or deployed contracts.
+- Injected desktop EOA wallet only. No WalletConnect, mobile connection, smart accounts, permits, reverse/other bridges, backend signing, or deployed contracts.
 - Real mode and clearly marked simulation. Never silently replace live failures with fake success.
 - Stop before signing or broadcasting money-moving transactions. The owner reviews and signs in their own wallet. Never request private keys or seed phrases.
 

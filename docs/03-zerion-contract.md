@@ -1,57 +1,15 @@
-# Zerion adapter reference
+# Zerion adapter contract
 
-Verified September 28, 2026 against official docs. This is a contract reference, not proof that this owner's key can execute swaps. Start with `scripts/probe-zerion.mjs` and inspect its summary. Do not copy the documentation's sample transactions; examples are not executable or reliably chain-consistent.
+Arbitrum route verified read-only September 29, 2026. Run `npm run probe`; it requests metadata and a 0.001 ETH quote, normalizes Kyber, calls/estimates the transaction, and prints a sanitized summary. It never signs or broadcasts. Raw response stays in ignored `.local/arbitrum-quote.json`.
 
-## Wire contract
+API origin `https://api.zerion.io`; server-only Basic auth encodes `API_KEY:`. Resolve `/v1/fungibles/by-implementation` with `arbitrum` for native ETH and `arbitrum:0xaf88d065e77c8cC2239327C5EDb3A432268e5831` for native USDC. Use returned fungible IDs, not implementation addresses. Validate USDC implementation/decimals and ETH metadata.
 
-Base URL: `https://api.zerion.io`. Server-only HTTP Basic authentication: Base64 of `API_KEY:` including the trailing colon. `Accept: application/json`. [Authentication](https://developers.zerion.io/authentication).
+`GET /v1/swap/quotes/`: currency usd; from/to same account; input/output chain_id arbitrum; input native ETH ID, output USDC ID; decimal ETH input; slippage_percent 0.5. Requests are paced 1.5 seconds apart with one bounded 429 retry.
 
-Resolve IDs using `GET /v1/fungibles/by-implementation?implementation=...`:
+Normalize attributes liquidity_source, input/output/minimum quantities, slippage, fee amounts/inclusion, error and transaction_swap.evm. Check relationships for both chains and assets. EVM chain/value/gas fields are hexadecimal. Preserve fee unavailability rather than making up zero. Reject nonnull approval or bridge fees and unknown signing flows.
 
-| Asset | implementation |
-|---|---|
-| USDC | `base:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| Native ETH | `base` |
+Only `kyber` is supported and pinned. Official Arbitrum MetaAggregationRouterV2: `0x6131B5fae19EA4f9D964eAc0408E4408b66337b5`. Observed selector `0xe21fd0e9`, chain `0xa4b1`, native value exactly the input amount, no approval. Validate router/account/chain/value and strict transaction fields, then preflight. No fallback to another source if unavailable.
 
-Use returned `data.id`, not the Base token address, as the quote's fungible ID. Cache successful immutable mappings in the server process. Validate USDC's Base implementation. [Lookup](https://developers.zerion.io/api-reference/fungibles/get-fungible-asset-by-implementation).
+Live read-only probe: 0.001 ETH returned an estimated 2.685425 USDC, minimum 2.671997 USDC; eth_call and gas estimation passed. Wallet balance 0.001847241847681792 ETH covered the input plus a 0.000015540140644 ETH estimated 2x gas margin. These are one-time observations, not current pricing or guaranteed fees. No receipt or live wallet signing has been verified.
 
-`GET /v1/swap/quotes/`, using `URLSearchParams`:
-
-```text
-currency=usd
-from=<connected account>
-to=<same account>
-input[chain_id]=base
-input[fungible_id]=<resolved USDC ID>
-input[amount]=<human-readable decimal USDC>
-output[chain_id]=base
-output[fungible_id]=<resolved ETH ID>
-slippage_percent=0.5
-```
-
-Response: `data[]`, each with `attributes` and `relationships`.
-
-| Field under attributes | Adapter use |
-|---|---|
-| `liquidity_source.id/name` | Route identity |
-| `input_amount.quantity` | Check sell amount |
-| `output_amount.quantity` | Estimated output |
-| `minimum_output_amount.quantity` | Minimum quoted output |
-| `output_amount_after_fees` | Provider net-value comparison; not necessarily wallet credit |
-| `slippage_percent` | Verify requested tolerance |
-| `protocol_fee`, `bridge_fee`, `network_fee` | Display actual fees/inclusion flags |
-| `transaction_approve.evm` | Optional approval payload |
-| `transaction_swap.evm` | Required for execution |
-| `error` | Non-executable quote |
-
-EVM payload numbers are hexadecimal strings. Key fields: `from`, `to`, `chain_id`, `data`, `value`, `nonce`, `gas`; legacy `gas_price` or EIP-1559 `max_fee`/`max_priority_fee`. Relationship IDs identify both chains/assets. Missing fiat values are unavailable, not zero. [Quote contract and OpenAPI](https://developers.zerion.io/api-reference/swap/get-swap-and-bridge-quotes).
-
-## Application policy — our decisions
-
-Do not blindly use the first route. Filter for the configured atomic source, supported payload, matching intent and no provider error. Pin one source for the demo, preserving its ID during refresh. If the selected source disappears, fail visibly rather than choosing an unexpected route. A metadata change or schema mismatch disables execution; don't add permissive `any` casts until the wallet accepts it.
-
-Ask the implementation agent to write a <=20-line integration note into STATUS after the live probe: actual selected source ID, available transaction type, approval format, known fee semantics and access result. Only research the selected provider's official documentation if needed to establish atomic settlement; no broad routing comparison.
-
-The probe deliberately does not select or endorse a source. For the demo, prefer a conventional direct DEX/aggregator source with a documented same-transaction settlement path. Reject bridge-style sources even on Base-to-Base requests. Merely having an EVM transaction does not prove atomic delivery.
-
-If only read-only quotes are available, keep review enabled and wallet execution disabled. If no key exists, retain simulation. Neither mode is a verified live swap. Do not introduce 0x, LI.FI or another second API as fallback during this deadline.
+Official references: [Zerion quotes](https://developers.zerion.io/api-reference/swap/get-swap-and-bridge-quotes), [Kyber deployments](https://docs.kyberswap.com/developer-guide/aggregator-api/contracts), [Kyber execution](https://docs.kyberswap.com/developer-guide/aggregator-api/how-to-guides/execute-a-swap-with-the-aggregator-api), [Circle native USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses).

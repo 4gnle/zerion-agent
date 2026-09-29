@@ -2,11 +2,22 @@ import { z } from 'zod';
 import { AppError } from './errors';
 const gates = new Map<string, { count: number; since: number; active: boolean }>();
 export function appMode() { const mode = process.env.APP_MODE || 'simulation'; if (mode !== 'live' && mode !== 'simulation') throw new AppError('CONFIG', 'APP_MODE must be live or simulation.', 503); return mode; }
-export async function handle<T>(request: Request, operation: 'intent' | 'quote', schema: z.ZodType<T>, fn: (body: T) => Promise<unknown>) {
+export function allowsOrigin(request: Request, configured = process.env.APP_ORIGIN || 'http://127.0.0.1:3000') {
+  try {
+    const origin = request.headers.get('origin');
+    if (!origin) return false;
+    const incoming = new URL(origin), expected = new URL(configured);
+    // Keep requests same-origin. Accept the two local preview aliases only,
+    // on the configured protocol/port; never trust forwarded headers.
+    if (origin !== incoming.origin || request.headers.get('host') !== incoming.host) return false;
+    const local = new Set(['127.0.0.1', 'localhost']);
+    return incoming.origin === expected.origin || (local.has(expected.hostname) && local.has(incoming.hostname) && incoming.protocol === expected.protocol && incoming.port === expected.port);
+  } catch { return false; }
+}
+export async function handle<T>(request: Request, operation: 'intent' | 'quote' | 'history' | 'bridgeStatus', schema: z.ZodType<T>, fn: (body: T) => Promise<unknown>) {
   let release: (() => void) | undefined;
   try {
-    const origin = process.env.APP_ORIGIN || 'http://127.0.0.1:3000';
-    if (request.headers.get('origin') !== origin || new URL(request.url).origin !== origin) throw new AppError('ORIGIN', 'Request origin is not allowed.', 403);
+    if (!allowsOrigin(request)) throw new AppError('ORIGIN', 'Open this app on its configured local address and try again.', 403);
     if (!request.headers.get('content-type')?.startsWith('application/json')) throw new AppError('CONTENT_TYPE', 'Expected JSON.', 415);
     // Local-only server; do not trust caller-supplied forwarding/IP headers.
     const now = Date.now(); let gate = gates.get(operation);

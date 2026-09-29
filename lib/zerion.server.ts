@@ -3,11 +3,11 @@ import { z } from 'zod';
 import type { Address } from 'viem';
 import { USDC } from './config';
 import { AppError } from './errors';
-import { usdc } from './amounts';
+import { eth } from './amounts';
 import { normalizeQuote } from './quote';
 let lastRequest = 0;
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-async function get(path: string, params: URLSearchParams): Promise<unknown> {
+export async function zerionGet(path: string, params: URLSearchParams): Promise<unknown> {
   const key = process.env.ZERION_API_KEY;
   if (!key) throw new AppError('CONFIG', 'Zerion API access is not configured.', 503);
   const url = new URL(path, 'https://api.zerion.io'); url.search = params.toString();
@@ -30,17 +30,24 @@ let assets: { sell: string; buy: string } | null = null;
 async function resolveAssets() {
   if (assets) return assets;
   const asset = z.object({ data: z.object({ id: z.string(), attributes: z.object({ symbol: z.string(), implementations: z.array(z.object({ chain_id: z.string(), address: z.string().nullish(), decimals: z.number() })).optional() }) }) });
-  const sell = asset.parse(await get('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: `base:${USDC}` })));
-  const buy = asset.parse(await get('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: 'base' })));
-  if (!sell.data.attributes.implementations?.some(i => i.chain_id === 'base' && i.address?.toLowerCase() === USDC.toLowerCase() && i.decimals === 6) || buy.data.attributes.symbol !== 'ETH') throw new AppError('METADATA', 'The provider asset metadata did not match this pair.', 502);
-  return assets = { sell: sell.data.id, buy: buy.data.id };
+  const usdc = asset.parse(await zerionGet('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: `arbitrum:${USDC}` })));
+  const native = asset.parse(await zerionGet('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: 'arbitrum' })));
+  if (!usdc.data.attributes.implementations?.some(i => i.chain_id === 'arbitrum' && i.address?.toLowerCase() === USDC.toLowerCase() && i.decimals === 6) || native.data.attributes.symbol !== 'ETH') throw new AppError('METADATA', 'The provider asset metadata did not match this pair.', 502);
+  return assets = { sell: native.data.id, buy: usdc.data.id };
 }
 export async function getQuote(account: Address, amount: bigint) {
   const ids = await resolveAssets();
-  const response = z.object({ data: z.array(z.unknown()) }).parse(await get('/v1/swap/quotes/', new URLSearchParams({ currency: 'usd', from: account, to: account, 'input[chain_id]': 'base', 'input[fungible_id]': ids.sell, 'input[amount]': usdc(amount), 'output[chain_id]': 'base', 'output[fungible_id]': ids.buy, slippage_percent: '0.5' })));
+  const response = z.object({ data: z.array(z.unknown()) }).parse(await zerionGet('/v1/swap/quotes/', new URLSearchParams({ currency: 'usd', from: account, to: account, 'input[chain_id]': 'arbitrum', 'input[fungible_id]': ids.sell, 'input[amount]': eth(amount), 'output[chain_id]': 'arbitrum', 'output[fungible_id]': ids.buy, slippage_percent: '0.5' })));
   const source = process.env.ZERION_ATOMIC_SOURCE_ID || '';
   if (source && source !== 'kyber') throw new AppError('ROUTE', 'The configured route is unsupported by this prototype.', 503);
   const candidate = response.data.find(q => z.object({ attributes: z.object({ liquidity_source: z.object({ id: z.literal('kyber') }) }) }).safeParse(q).success);
   if (!candidate) throw new AppError('ROUTE', 'The selected KyberSwap route is unavailable. Try again later.', 503);
   return normalizeQuote(candidate, account, amount, ids, source);
+}
+
+export async function getBridgeQuote(account: Address, amount: bigint) {
+  const response = z.object({ data: z.array(z.unknown()) }).parse(await zerionGet('/v1/swap/quotes/', new URLSearchParams({ currency: 'usd', from: account, to: account, 'input[chain_id]': 'ethereum', 'input[fungible_id]': 'eth', 'input[amount]': eth(amount), 'output[chain_id]': 'arbitrum', 'output[fungible_id]': 'eth', slippage_percent: '0.5' })));
+  const candidate = response.data.find(q => z.object({ attributes: z.object({ liquidity_source: z.object({ id: z.literal('lifi') }) }) }).safeParse(q).success);
+  if (!candidate) throw new AppError('ROUTE', 'The Ethereum → Arbitrum bridge route is unavailable.', 503);
+  return normalizeQuote(candidate, account, amount, { sell: 'eth', buy: 'eth' }, process.env.ZERION_BRIDGE_SOURCE_ID || '', Date.now(), true);
 }

@@ -1,3 +1,5 @@
+> Historical initial research: Base/USDC→ETH scope below is superseded by the owner’s Arbitrum ETH→USDC direction. Current contracts and verification are in docs/02, docs/03 and docs/08.
+
 # Research and feasibility audit
 
 Prepared September 28, 2026. Primary sources were opened/read; the quote OpenAPI embedded in the official Markdown page was inspected because the rendered page hid child parameters. This is an audit of the **plan and documentation**, not a completed application security audit.

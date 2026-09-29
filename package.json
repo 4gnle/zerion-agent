@@ -1,7 +1,8 @@
 {
-  "name": "half",
+  "name": "zerion-agent",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=22"
   },
@@ -13,7 +14,7 @@
     "test": "vitest run",
     "test:browser": "playwright test",
     "test:intent:live": "node --env-file=.env.local --import tsx scripts/intent-smoke.ts",
-    "probe": "node --env-file=.env.local scripts/probe-zerion.mjs"
+    "probe": "node --env-file=.env.local --import tsx scripts/probe-arbitrum.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.0",
