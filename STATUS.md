@@ -1,6 +1,6 @@
 # Current checkpoint
 
-State: live wallet UI/history/bridge implemented; final browser checks in progress.
+State: live wallet UI/history/bridge ready locally; owner signing NOT RUN.
 
 Current owner scope:
 - Wallet Agent; Powered by Zerion footer; neutral UI, blue buttons/loading, no dividers.
@@ -24,7 +24,11 @@ Done:
 
 Verification:
 - Build/typecheck PASS; 125 unit/boundary tests PASS.
-- New bridge/history/header browser checks and four paid bridge extraction cases in progress.
+- Seven browser checks PASS: live swap/bridge, header/history, localhost, desktop/mobile simulation.
+- Four paid bridge extraction cases PASS (2,540 input + 154 output tokens).
+- Actual history HTTP 200; owner bridge quote safely disabled for Ethereum funding.
+- Bridge provider 404/1003 handled as pending indexing; real endpoint recheck PASS.
+- Secret scan and git diff check PASS; env files ignored.
 - Earlier actual wallet balance browser/RPC checks and localhost Origin checks PASS.
 - Owner extension/signing/live receipt, Safari/Firefox and screen-reader audit NOT RUN.
 
@@ -37,6 +41,5 @@ Commands:
 - npm run test:intent:live -- --bridge is paid; never run routinely.
 
 Next:
-- Finish browser/real endpoint checks, inspect mobile layout and update docs.
 - Owner connects wallet; Ethereum ETH + gas required for the requested bridge direction.
 - No agent signatures/broadcast, commits/pushes or deployment; owner commit preserved.

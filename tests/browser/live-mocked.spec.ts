@@ -77,6 +77,7 @@ for (const action of ['swap', 'bridge'] as const) test(`mocked wallet: ${action}
  await expect(page.getByLabel('Wallet history')).toContainText('receive');
  await page.getByRole('button',{name:'Load older transactions'}).click();
  await expect(page.getByLabel('Wallet history')).toContainText('send');
+ await page.screenshot({path:'.local/wallet-dashboard-desktop.png',fullPage:true});
  await page.getByLabel('Connected network',{exact:true}).selectOption('42161');
  await page.getByLabel('Connected network',{exact:true}).selectOption('1');
  await page.getByLabel('What would you like to do?').fill(action==='bridge'?'Bridge half my ETH from Ethereum to Arbitrum':'Swap half my ETH for USDC');

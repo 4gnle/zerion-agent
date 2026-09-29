@@ -13,3 +13,11 @@ Only `kyber` is supported and pinned. Official Arbitrum MetaAggregationRouterV2:
 Live read-only probe: 0.001 ETH returned an estimated 2.685425 USDC, minimum 2.671997 USDC; eth_call and gas estimation passed. Wallet balance 0.001847241847681792 ETH covered the input plus a 0.000015540140644 ETH estimated 2x gas margin. These are one-time observations, not current pricing or guaranteed fees. No receipt or live wallet signing has been verified.
 
 Official references: [Zerion quotes](https://developers.zerion.io/api-reference/swap/get-swap-and-bridge-quotes), [Kyber deployments](https://docs.kyberswap.com/developer-guide/aggregator-api/contracts), [Kyber execution](https://docs.kyberswap.com/developer-guide/aggregator-api/how-to-guides/execute-a-swap-with-the-aggregator-api), [Circle native USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses).
+
+## Ethereum → Arbitrum native ETH bridge
+
+Same Zerion quotes endpoint with input chain ethereum, output chain arbitrum, both fungible IDs eth. Select lifi only; configured pin ZERION_BRIDGE_SOURCE_ID=lifi. Official Ethereum diamond router 0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE ([deployment](https://raw.githubusercontent.com/lifinance/contracts/main/deployments/mainnet.json)). A public funded reference quote had selector 0xa1f1ce43, native value equal to 0.001 ETH, no approval; normalization, eth_call and gas estimate (117950 gas) passed. This reference address is not the owner's wallet. Owner quotes currently report not_enough_input_asset_balance and contain no executable payload.
+
+Bridge completion is asynchronous. Use the fixed [LI.FI status API](https://docs.li.fi/api-reference/check-the-status-of-a-cross-chain-transfer) with source tx hash, fromChain=1 and toChain=42161. Source inclusion alone is not completion; verify returned wallet/chain/token/amount and destination receipt. The app is not a bridge/router security audit.
+
+Wallet history uses GET /v1/wallets/{account}/transactions/, currency usd, page[size]=20 and optional page[after]. All indexed networks are included; only cursor text is reused. Actual owner history returned two transactions, including an unverified token lookalike; history labels this and never uses it as native spendable ETH.

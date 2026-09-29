@@ -1,6 +1,6 @@
 # Implementation contract
 
-Current owner scope: native ETH → native Circle USDC on Arbitrum One (42161), same connected injected EOA. No bridge, token approval, permit, backend signer or second chain.
+Current owner scope: native ETH → native Circle USDC on Arbitrum One (42161), same connected injected EOA. Also allow native ETH bridges from Ethereum (1) to Arbitrum (42161). No token approval, permit, backend signer or other bridge direction.
 
 Next.js App Router, React, strict TypeScript, CSS, wagmi, viem, TanStack Query, Zod, OpenAI SDK. No database or agent framework. Wallet/browser storage stays behind the client boundary; QueryClient and wallet config remain stable.
 
@@ -8,11 +8,11 @@ Next.js App Router, React, strict TypeScript, CSS, wagmi, viem, TanStack Query, 
 
 Read native balance through Arbitrum RPC; verify the allowlisted native USDC contract's six decimals. ETH has 18 decimals. Use BigInt for spending and strict decimal parsing. Half and percentages floor to wei. Cap at 0.002 ETH. Reject zero, over-cap, over-balance and full-balance amounts. Never clamp. A changed relative balance invalidates the review; exact amounts may proceed only if still funded.
 
-`POST /api/intent {text}` performs one structured extraction and validates it. `POST /api/quote {account,sellAmountBaseUnits}` uses wei (base units means units, not the Base network). The server independently checks cap and current ETH balance; from/to both use account. No client overrides for chain, assets, recipient or upstream URL. Keys remain server-only.
+`POST /api/intent {text}` performs one structured extraction and validates it. `POST /api/quote {account,sellAmountBaseUnits,action?}` uses wei (base units means units, not the Base network). The server independently checks cap and current ETH balance; from/to both use account. No client overrides for chain, assets, recipient or upstream URL. Keys remain server-only.
 
 Both endpoints enforce matching Origin/Host with localhost and 127.0.0.1 aliases on the configured port, <=2KB JSON, strict schemas, sanitized errors, no-store responses, in-process throttles and one concurrent operation. Bind to 127.0.0.1. These are local demo controls, not production infrastructure.
 
-The quote validates both chain/asset relationships, exact ETH input, six-decimal USDC output/minimum, 0.5% slippage, source kyber, official Arbitrum router and native value equal to input. Reject approvals, bridge fees, permits and unexpected signing payloads. TTL is 30 seconds; refresh is manual. Bounded read retry only, never retry sending automatically.
+The quote validates both chain/asset relationships, exact ETH input, six-decimal USDC output/minimum, 0.5% slippage, source kyber/Arbitrum router for swaps or lifi/Ethereum router for bridges and native value equal to input. Reject approvals, unexpected bridge fees on swaps, permits and unexpected signing payloads. TTL is 30 seconds; refresh is manual. Bounded read retry only, never retry sending automatically.
 
 ## Wallet lifecycle
 
@@ -29,3 +29,11 @@ Zerion and Kyber remain trusted for opaque calldata, including encoded recipient
 ## Simulation
 
 Simulation balance is 0.002 ETH; half is 0.001 ETH with an illustrative 2.7 USDC quote. Simulation has no executable payload and cannot cross the signing boundary. With an API key, interpretation is real; without one, fixture phrases work under a Scripted simulation label. Never silently turn a live failure into simulation.
+
+## Bridge and history additions
+
+Intent buyToken ETH + chain ethereum selects the fixed Ethereum→Arbitrum native bridge; swap intent stays buyToken USDC + chain arbitrum. Quote action is derived from the validated intent. Server independently fixes both assets/chains and the LI.FI source/router. No arbitrary destinations or URLs.
+
+Use the source-chain public client for balance, preflight, gas and receipt. Preserve pending chain/hash/minimum/sourceConfirmed in storage. A source receipt is followed by POST /api/bridge-status. The fixed LI.FI status request checks source hash/chain, from/to account, successful COMPLETED state, native ETH destination/amount and an actual successful Arbitrum receipt. Only then clear recovery and report bridge completion. Pending/partial/refund/unknown remain tracked with explorer links and manual Check status; no automatic send/retry.
+
+POST /api/history accepts account and a bounded opaque cursor. Fetch only the fixed Zerion wallet-transactions endpoint; extract page[after] from next links, never follow provider URLs. Render paginated all-network history, keep account-scoped Query keys, show pending app transactions immediately and invalidate after confirmed actions. No private keys/history reach the model. Token ticker lookalikes are marked unverified; balances always use native ETH and allowlisted USDC contracts.

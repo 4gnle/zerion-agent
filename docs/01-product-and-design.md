@@ -2,7 +2,7 @@
 
 ## The promise
 
-Convert one short sentence into a reviewable ETH-to-USDC swap. Users still connect and approve in their wallet. “One sentence” means less form filling, not permissionless execution. Primary demo: `Hey, swap half my ETH for USDC`.
+Convert one short sentence into a reviewable Arbitrum ETH-to-USDC swap or an Ethereum-to-Arbitrum native ETH bridge. Users still connect and approve in their wallet. “One sentence” means less form filling, not permissionless execution. Primary demo: `Hey, swap half my ETH for USDC`.
 
 The audience is someone who already has a desktop wallet and ETH on Arbitrum. No onboarding into crypto, wallet creation, deposits, portfolio explorer, trading advice, or token discovery.
 
@@ -10,7 +10,7 @@ The audience is someone who already has a desktop wallet and ETH on Arbitrum. No
 
 | Decision | Requirement |
 |---|---|
-| Network | Arbitrum mainnet only; visible before entry and review |
+| Network | Swaps on Arbitrum; bridges Ethereum → Arbitrum; connected chain visible/changeable in header |
 | Sell | Native ETH; not WETH |
 | Buy | Native Circle USDC; not bridged USDC.e |
 | Recipient | The currently connected wallet only |
@@ -22,7 +22,7 @@ The audience is someone who already has a desktop wallet and ETH on Arbitrum. No
 | Execution | Owner clicks each action and confirms each wallet request |
 | Modes | Live or clearly labeled simulation, selected at server startup |
 
-Reverse direction, dollar amounts, “all/max,” arbitrary fractions, multiple chains/tokens, follow-up conversation, limit orders, scheduled transactions, permits/Permit2 signatures, smart accounts and bridges are out of scope. A concise refusal is the complete handling of an unsupported edge case.
+Reverse direction, dollar amounts, “all/max,” arbitrary fractions, other chains/tokens, follow-up conversation, limit orders, scheduled transactions, permits/Permit2 signatures, smart accounts and other/reverse bridges are out of scope. A concise refusal is the complete handling of an unsupported edge case.
 
 ## Intent extraction contract
 
@@ -42,7 +42,8 @@ Design a restrained, finished financial tool called **Wallet Agent**. No imitati
 - Header max-width 1080px; name left; connected-chain label (Arbitrum or Ethereum) and connect/account control right; disconnected and unsupported wallets get neutral status labels; simulation displays its demo Arbitrum chain. No divider lines. Page padding 24px desktop, 16px mobile.
 - Main column max-width 680px, top margin 64px desktop/32px mobile. Heading “Wallet Agent” and the supported pair. No eyebrow labels or descriptive copy beneath the composer.
 - Composer: one accessible text input or 2-row textarea with a circular blue Send button and a crisp SVG arrow. Placeholder “Swap half my ETH for USDC”. Visible label “What would you like to do?”, not just placeholder. Example chip “Swap half my ETH for USDC” fills input; does not submit.
-- When connected in live mode, show ETH and native USDC balances above the composer for Arbitrum or Ethereum. Include loading, retry/refresh and unsupported-network states; never show missing data as zero.
+- When connected in live mode, show Your Balance immediately right of the wallet address; its dropdown shows ETH and native USDC on the connected Arbitrum or Ethereum network. Include loading, retry/refresh and unsupported-network states; never show missing data as zero.
+- A left sidebar shows wallet history from all indexed networks with refresh, pagination, pending state and clear unverified token labels. On narrow screens it follows the main panel.
 - After submission, a compact user sentence bubble above the review card. Keep only the current attempt plus its state; no long chat history, sidebar, fake assistant avatars or typing theatrics.
 - Review card uses 20px radius, 24px padding, no border. Prominent stacked “You pay” and “You receive (estimated)” amounts, simple circular text token markers, downward arrow between. Below: network, minimum quoted output, slippage, estimated network fee, provider fee and route. Small “Details” disclosure for USDC contract, recipient and fee inclusion notes.
 - One full-width primary button, 48px high; one quiet Edit action. No competing calls to action. Explain that ETH must cover both input and gas.
