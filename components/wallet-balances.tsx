@@ -1,4 +1,5 @@
 'use client';
+import { displayAmount } from '@/lib/display-amount';
 import { useQuery } from '@tanstack/react-query';
 import { useConfig } from 'wagmi';
 import { getPublicClient } from 'wagmi/actions';
@@ -32,8 +33,8 @@ export function WalletBalances({ account, chainId }: { account: Address; chainId
   return <section className="wallet-balances" aria-label="Wallet balances" aria-busy={balances.isFetching}>
     <div className="balance-heading"><p>Your balance <span>on {chainId === arbitrum.id ? 'Arbitrum' : chainId === 8453 ? 'Base' : 'Ethereum'}</span></p><button className="text-button" onClick={() => void balances.refetch()} disabled={balances.isFetching}>{balances.isFetching ? 'Updating…' : 'Refresh'}</button></div>
     {balances.isError ? <p className="balance-note" role="alert">Couldn’t load your balances. Try refreshing.</p> : <dl className="balance-grid">
-      <div><dt>ETH</dt><dd>{balances.data?.eth ?? '…'}</dd></div>
-      <div><dt>USDC</dt><dd>{balances.data?.usdc ?? '…'}</dd></div>
+      <div><dt>ETH</dt><dd title={balances.data?.eth}>{balances.data ? displayAmount(balances.data.eth) : '…'}</dd></div>
+      <div><dt>USDC</dt><dd title={balances.data?.usdc}>{balances.data ? displayAmount(balances.data.usdc) : '…'}</dd></div>
     </dl>}
   </section>;
 }

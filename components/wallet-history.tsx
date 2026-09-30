@@ -1,4 +1,5 @@
 'use client';
+import { displayAmount } from '@/lib/display-amount';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { Address } from 'viem';
 import type { HistoryItem } from '@/lib/history';
@@ -24,7 +25,7 @@ export function WalletHistory({ account, pending }: { account?: Address; pending
       <ol className="history-list">{items.map(t => <li key={t.id}><a className="history-item" href={t.chain === 'ethereum' || t.chain === 'arbitrum' ? `https://${t.chain === 'ethereum' ? 'etherscan.io' : 'arbiscan.io'}/tx/${t.hash}` : `https://app.zerion.io/${account}/history`} target="_blank" rel="noreferrer">
         <div><strong>{t.operation.replaceAll('_', ' ')}</strong><span aria-hidden="true">↗</span></div>
         <span>{t.chain} · {t.status}</span>
-        {t.transfers.slice(0, 2).map((v, i) => <span key={i} className="history-amount">{v.incoming ? '+' : '−'}{v.amount} {v.symbol}{v.unverified ? ' (unverified)' : ''}</span>)}
+        {t.transfers.slice(0, 2).map((v, i) => <span key={i} className="history-amount" title={`${v.amount} ${v.symbol}`}>{v.incoming ? '+' : '−'}{displayAmount(v.amount)} {v.symbol}{v.unverified ? ' (unverified)' : ''}</span>)}
         {t.spam && <span>Flagged as spam</span>}
         <time dateTime={t.date ?? undefined}>{t.date ? new Date(t.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending'}</time>
       </a></li>)}</ol>
