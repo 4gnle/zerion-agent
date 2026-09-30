@@ -1,8 +1,8 @@
-# Zerion attribution asset
+# Zerion logo
 
-`zerion-lockup.svg` is the unmodified official main lockup downloaded on 2026-09-28.
+Official, unmodified Zerion lockup used in the “Powered by” footer.
 
-Source: https://design.zerion.io/assets/zerion_lockup_main.a0c83a4f.svg
-Guidelines: https://design.zerion.io/logo
+- [Source asset](https://design.zerion.io/assets/zerion_lockup_main.a0c83a4f.svg)
+- [Brand guidelines](https://design.zerion.io/logo)
 
-Use as a small footer attribution linking to https://zerion.io/, alongside the independent-prototype disclosure. Preserve proportions, original colors and clear space; do not apply effects. Zerion Agent remains the product name. Simulation must retain its simulated-data disclosure.
+The logo belongs to Zerion. Preserve its colors and proportions.
