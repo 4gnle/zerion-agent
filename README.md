@@ -8,6 +8,8 @@ Two actions, same connected wallet: swap native ETH → native Circle USDC on Ar
 
 Independent prototype · No affiliation claimed.
 
+Task checklist and remaining manual verification: [TODO.md](TODO.md).
+
 ## Run locally
 
 Node 22+ and npm. For a fresh setup, copy `.env.example` to `.env.local`, fill keys, then:

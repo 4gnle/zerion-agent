@@ -3,7 +3,7 @@
 State: live wallet UI/history/bridge ready locally; owner signing NOT RUN.
 
 Current owner scope:
-- Wallet Agent; Powered by Zerion footer; neutral UI, blue buttons/loading, no dividers.
+- Wallet Agent; Powered by Zerion footer; neutral UI, blue buttons/loading, subtle rounded section panels.
 - Network selector: Ethereum and Arbitrum only.
 - Your Balance dropdown RIGHT of address; ETH and native USDC for connected chain.
 - History on the left: all wallet networks, pagination, refresh, unverified/spam labeling.
@@ -11,6 +11,8 @@ Current owner scope:
 - One extraction call, deterministic wei math, 0.002 ETH cap, reserve gas; no approval.
 
 Done:
+- Final reference styling: framed History/main panels, softer cards; live eyebrow removed.
+- TODO.md records completed work, verification and remaining owner checks.
 - Live injected-wallet connection; native USDC contracts verified against Circle docs.
 - Account/chain keyed balances/history, loading/error states, pending receipt recovery.
 - Zerion metadata, quotes and history via server-only key; Origin/Host local aliases.
@@ -23,6 +25,7 @@ Done:
 - Both ignored env files remain APP_MODE=live; source pins kyber/lifi. No key exposure.
 
 Verification:
+- Final panel polish: build/typecheck + four targeted Chrome tests PASS; 1440/390px visual checks PASS.
 - Build/typecheck PASS; 125 unit/boundary tests PASS.
 - Seven browser checks PASS: live swap/bridge, header/history, localhost, desktop/mobile simulation.
 - Four paid bridge extraction cases PASS (2,540 input + 154 output tokens).

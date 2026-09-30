@@ -1,6 +1,6 @@
 # Continue Wallet Agent
 
-Read AGENTS.md and STATUS.md first. The owner's current scope is **Arbitrum ETH → native USDC swaps plus native ETH bridges from Ethereum to Arbitrum, same wallet**. This supersedes the earlier Arbitrum-only scope. The user also requested all-wallet transaction history on the left, a changeable Ethereum/Arbitrum selector and Your Balance dropdown to the right of the wallet address.
+Read AGENTS.md and STATUS.md first. Maintain TODO.md as the task and verification checklist. The owner's current scope is **Arbitrum ETH → native USDC swaps plus native ETH bridges from Ethereum to Arbitrum, same wallet**. This supersedes the earlier Arbitrum-only scope. The user also requested all-wallet transaction history on the left, a changeable Ethereum/Arbitrum selector and Your Balance dropdown to the right of the wallet address.
 
 Keep Next.js + React + TypeScript, plain CSS, wagmi, viem, TanStack Query, Zod and OpenAI SDK. Keep the name Wallet Agent, minimal layout, no eyebrows or descriptive copy beneath the composer, and Zerion Blue buttons/loading.
 

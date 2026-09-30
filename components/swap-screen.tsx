@@ -191,7 +191,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     </header>
     <div className="workspace"><WalletHistory account={simulation ? undefined : connection.address} pending={pending} />
     <main id="main">
-      {!simulation && <div className="mode-note"><span className="status-dot live" />Live · You review and sign in your wallet</div>}
+      <div className="agent-content">
       <section className="intro"><h1>Wallet Agent</h1><p className="subtitle">Swap on Arbitrum or bridge from Ethereum</p></section>
       {walletError && <p className="wallet-error" role="alert">{walletError}</p>}
       <form className="composer" onSubmit={submit} hidden={hasReview && state.phase !== 'error' && state.phase !== 'ambiguous'}>
@@ -225,6 +225,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
         {pending && !review && <section className="review-card"><h2>Checking your transaction</h2><p>{statusText}</p><p className="small muted">Original account: {shortAddress(pending.account)} · {pending.chain === 1 ? 'Ethereum' : 'Arbitrum'}</p><Explorer hash={pending.hash} chain={pending.chain} />{pending.chain === 1 && <a href={`https://scan.li.fi/tx/${pending.hash}`} target="_blank" rel="noreferrer">Track bridge ↗</a>}{state.phase === 'unknownPending' && <button className="primary" onClick={() => { if (!busy.current) { busy.current = true; void track(pending, attempt.current).finally(() => { busy.current = false; }); } }}>Check status</button>}</section>}
         {(state.phase === 'error' || state.phase === 'invalidated' || state.phase === 'ambiguous') && <section className="review-card error-card" role="alert"><span className="error-symbol" aria-hidden="true">!</span><h2>{state.phase === 'ambiguous' ? 'Check your wallet activity' : state.phase === 'invalidated' ? 'Let’s review that again' : 'Couldn’t continue'}</h2><p>{state.error}</p>{state.phase === 'ambiguous' ? <button className="primary" onClick={() => { attempt.current++; put({ phase: 'idle', attempt: attempt.current }); }}>I checked: nothing is pending</button> : state.review ? <button className="primary" onClick={() => void refresh(state.review!)}>Review a fresh quote</button> : <button className="primary" onClick={edit}>Edit and try again</button>}</section>}
         {state.phase === 'confirmed' && <section className="review-card success-card"><div className="success-symbol" aria-hidden="true">✓</div><h2>{state.simulated ? 'Simulation complete' : state.bridge ? 'Bridge complete' : 'Swap confirmed'}</h2><p className="success-amount">{eth(state.sell)} ETH <span aria-hidden="true">→</span> {state.bridge ? 'ETH on Arbitrum' : 'USDC'}</p><p className="muted">Quoted output: {state.expected} {state.bridge ? 'ETH' : 'USDC'}</p>{state.simulated ? <p className="small muted">No funds moved. No wallet signature was requested.</p> : state.hash && <Explorer hash={state.hash} />}<button className="primary" onClick={() => { setText(''); setSentence(''); edit(); }}>Start another {state.bridge ? 'action' : 'swap'}</button></section>}
+      </div>
       </div>
     </main></div>
     <footer><span>Powered by</span><a href="https://zerion.io/" target="_blank" rel="noreferrer" aria-label="Visit Zerion"><img src="/brand/zerion-lockup.svg" alt="Zerion" width="82" height="20" /></a></footer>
