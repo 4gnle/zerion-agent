@@ -2,10 +2,9 @@
 
 A minimal conversational wallet interface built with Next.js, React, TypeScript and CSS. OpenAI extracts structured instructions; Zerion provides quotes and wallet history; wagmi and viem handle wallet interactions.
 
-- Swap native ETH for USDC on Arbitrum.
-- Bridge native ETH from Ethereum to Arbitrum.
-- Move Arbitrum ETH into native USDC on Base through a combined bridge/swap route.
-- Enter dollar values, percentages, or exact ETH amounts.
+- Swap ETH and USDC on Ethereum, Arbitrum and Base.
+- Bridge between these networks, with optional token conversion.
+- Enter dollar values, percentages, or exact token amounts.
 - View ETH/USDC balances and wallet transaction history.
 - Review quotes and confirm transactions in your connected desktop wallet.
 
@@ -27,7 +26,7 @@ Configure `.env.local` before starting. Open http://127.0.0.1:3000.
 | `OPENAI_API_KEY` | Server-side intent extraction |
 | `ZERION_API_KEY` | Server-side quotes and wallet history |
 | `OPENAI_MODEL` | Model identifier; default provided in `.env.example` |
-| `ZERION_ATOMIC_SOURCE_ID` | `kyber` for Arbitrum swaps |
+| `ZERION_ATOMIC_SOURCE_ID` | `kyber` for same-chain swaps |
 | `ZERION_BRIDGE_SOURCE_ID` | `lifi` for the supported cross-chain routes |
 | `DEMO_WALLET_ADDRESS` | Optional public wallet address for read-only probe scripts |
 | `APP_ORIGIN` | Public HTTPS origin; defaults to the Vercel project domain, or localhost locally |
@@ -36,9 +35,9 @@ Keep API keys in ignored environment files. Never add private keys or seed phras
 
 ## Usage
 
-Try “Swap half my ETH for USDC” or “Bridge 0.001 ETH from Ethereum to Arbitrum”. Actions are capped at 0.002 ETH and require remaining ETH for gas on the source network. The same wallet receives the output. Cross-chain completion requires verified delivery on the destination chain. Try “Bridge $2 of ETH from Arbitrum to Base then swap to USDC” for the combined route. Dollar inputs use a fresh ETH/USD price, exclude gas, and are rounded down to wei. The 0.002 ETH cap still applies, so larger dollar requests may be rejected.
+Try “Swap half my ETH for USDC” or “Bridge 0.001 ETH from Ethereum to Arbitrum”. Actions are capped at 0.002 ETH or 20 USDC and require remaining ETH for gas on the source network. The same wallet receives the output. Cross-chain completion requires verified delivery on the destination chain. Try “Bridge $2 of ETH from Arbitrum to Base then swap to USDC” for the combined route. Dollar inputs use a fresh input-token/USD price, exclude gas, and are rounded down to token base units. The input-token cap still applies, so larger dollar requests may be rejected.
 
-This is a prototype, not audited production software. Provider transaction data is trusted; in-process request limits alone are not production abuse protection. WalletConnect, smart accounts and reverse bridges are not supported.
+This is a prototype, not audited production software. Provider transaction data is trusted; in-process request limits alone are not production abuse protection. WalletConnect and smart accounts are not supported.
 
 ## Public hosting
 
@@ -60,3 +59,11 @@ npm start
 Browser tests require Chrome and a running local preview. Run `npm run test:browser` against simulation mode; set `TEST_LIVE_URL` for the mocked live-flow tests. `TEST_BASE_URL` overrides the default preview URL. `npm run test:intent:live` makes separately billed OpenAI API calls.
 
 The official Zerion logo is used for attribution. This project is independent of Zerion.
+
+### Supported routes
+
+Swap ETH ↔ native Circle USDC on Ethereum, Arbitrum or Base. Bridge ETH or USDC between any two of these networks, keeping the token or converting to the other token in the quoted route. A network named in “swap … on Base” applies to both sides; omitted source networks use the connected network. ARB tokens and other assets are not supported.
+
+Examples: “swap 2 USDC from Base to Arbitrum”, “swap half my ETH for USDC on Base”, “bridge 0.001 ETH from Base to Ethereum”, “bridge $2 of ETH from Arbitrum to Base then swap to USDC”.
+
+Execution remains limited to verified KyberSwap same-chain routes and LI.FI cross-chain routes returned by Zerion. Availability and minimum amounts vary; unsupported quotes stop without a signature. Input limits are 0.002 ETH or 20 USDC per action, plus source-network ETH for gas. USDC may require a separate exact-amount approval; after its receipt the app fetches a fresh quote and requires another explicit confirmation. Reloading during approval only checks its receipt and never sends the swap. Cross-chain completion requires verified destination delivery, with automatic status checks.

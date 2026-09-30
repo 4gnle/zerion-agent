@@ -1,4 +1,5 @@
 import { z } from 'zod';
 import { handle, appMode } from '@/lib/http.server';
-import { ethPrice } from '@/lib/zerion.server';
-export async function POST(request: Request) { return handle(request, 'price', z.object({}).strict(), async () => appMode() === 'simulation' ? { price: '2700', fetchedAt: Date.now(), simulated: true } : ethPrice()); }
+import { tokenSchema } from '@/lib/routes';
+import { tokenPrice } from '@/lib/zerion.server';
+export async function POST(request: Request) { return handle(request, 'price', z.object({ token: tokenSchema.default('ETH') }).strict(), async ({ token }) => appMode() === 'simulation' ? { price: token === 'ETH' ? '2700' : '1', fetchedAt: Date.now(), simulated: true } : tokenPrice(token)); }

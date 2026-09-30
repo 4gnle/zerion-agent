@@ -1,4 +1,5 @@
 'use client';
+import { quoteRoute, chainName } from '@/lib/routes';
 import { displayAmount } from '@/lib/display-amount';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import type { Address } from 'viem';
@@ -13,12 +14,12 @@ export function WalletHistory({ account, pending }: { account?: Address; pending
     }, getNextPageParam: (last, pages) => last.cursor && !pages.slice(0, -1).some(p => p.cursor === last.cursor) ? last.cursor : undefined,
   });
   const items = [...new Map(history.data?.pages.flatMap(p => p.items).map(t => [t.id, t]) ?? []).values()];
-  const active = pending && pending.account.toLowerCase() === account?.toLowerCase() && (pending.chain === 1 || pending.destination === 8453 || !items.some(t => t.hash.toLowerCase() === pending.hash.toLowerCase())) ? pending : null;
+  const active = pending && pending.account.toLowerCase() === account?.toLowerCase() && (quoteRoute(pending).from !== quoteRoute(pending).to || !items.some(t => t.hash.toLowerCase() === pending.hash.toLowerCase())) ? pending : null;
   return <aside className="history-sidebar" aria-label="Wallet history">
     <div className="history-heading"><h2>History</h2>{account && <button className="text-button" disabled={history.isFetching} onClick={() => void history.refetch()}>Refresh</button>}</div>
     {!account ? <p className="history-empty">Connect your wallet to see its transactions.</p> : <>
       <p className="history-scope">All networks</p>
-      {active && <a className="history-item" href={`${active.chain === 1 ? 'https://etherscan.io' : 'https://arbiscan.io'}/tx/${active.hash}`} target="_blank" rel="noreferrer"><strong>{active.chain === 1 || active.destination === 8453 ? 'Bridge in progress' : 'Transaction pending'} ↗</strong><span>{active.sourceConfirmed ? `Waiting for delivery on ${active.destination === 8453 ? 'Base' : 'Arbitrum'}` : 'Waiting for source confirmation'}</span></a>}
+      {active && <a className="history-item" href={`${active.chain === 1 ? 'https://etherscan.io' : active.chain === 8453 ? 'https://basescan.org' : 'https://arbiscan.io'}/tx/${active.hash}`} target="_blank" rel="noreferrer"><strong>{active.kind === 'approval' ? 'USDC approval pending' : quoteRoute(active).from !== quoteRoute(active).to ? 'Bridge in progress' : 'Transaction pending'} ↗</strong><span>{active.sourceConfirmed ? `Waiting for delivery on ${chainName(quoteRoute(active).to)}` : 'Waiting for source confirmation'}</span></a>}
       {history.isPending && <p className="history-empty" role="status">Loading transactions…</p>}
       {history.isError && <p className="history-empty" role="alert">Couldn’t load history. Try refreshing.</p>}
       {!history.isPending && !history.isError && !items.length && !active && <p className="history-empty">No transactions yet.</p>}

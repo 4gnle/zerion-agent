@@ -27,3 +27,13 @@ it.each(['http://evil.test:3000','http://localhost:3001','https://localhost:3000
  const request=new Request('http://127.0.0.1:3000/api/intent',{headers:{origin,host:origin==='null'?'127.0.0.1:3000':new URL(origin).host}});
  expect(allowsOrigin(request,'http://127.0.0.1:3000')).toBe(false);
 });
+
+it('keeps an explicit same-chain Base swap on Base even if model source differs',async()=>{
+ const parse=vi.fn().mockResolvedValue({status:'completed',output_parsed:{status:'ready',sellToken:'ETH',buyToken:'USDC',chain:'base',amountType:'percentage',amount:'50',recipient:'self',reason:'none',sourceChain:42161,destinationChain:8453}});
+ const result=await extract('Swap half my ETH for USDC on Base',mockClient(parse));
+ expect(result.intent.route).toEqual({from:8453,to:8453,sellToken:'ETH',buyToken:'USDC'});
+});
+it('preserves explicit cross-chain extraction',async()=>{
+ const parse=vi.fn().mockResolvedValue({status:'completed',output_parsed:{status:'ready',sellToken:'USDC',buyToken:'USDC',chain:'base',amountType:'exact',amount:'2',recipient:'self',reason:'none',sourceChain:8453,destinationChain:42161}});
+ expect((await extract('swap 2 USDC from Base to Arbitrum',mockClient(parse))).intent.route).toEqual({from:8453,to:42161,sellToken:'USDC',buyToken:'USDC'});
+});

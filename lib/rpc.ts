@@ -1,13 +1,14 @@
 import { createPublicClient, http, erc20Abi, type Address } from 'viem';
-import { arbitrum, mainnet, base, USDC, ETHEREUM_USDC } from './config';
+import { arbitrum, mainnet, base } from './config';
+import { tokenAddress, type ChainId } from './routes';
 import { AppError } from './errors';
 export const publicClient = createPublicClient({ chain: arbitrum, transport: http('https://arb1.arbitrum.io/rpc', { retryCount: 0, timeout: 15000 }) });
 const ethereumClient = createPublicClient({ chain: mainnet, transport: http(undefined, { retryCount: 0, timeout: 15000 }) });
 const baseClient = createPublicClient({ chain: base, transport: http(undefined, { retryCount: 0, timeout: 15000 }) });
 export const clientFor = (chain: number) => chain === 1 ? ethereumClient : chain === 8453 ? baseClient : publicClient;
 const decimalsChecked = new Set<number>();
-export async function readBalances(account: Address, chain: 1 | 42161 = 42161) {
-  const client = clientFor(chain), token = chain === 1 ? ETHEREUM_USDC : USDC;
+export async function readBalances(account: Address, chain: ChainId = 42161) {
+  const client = clientFor(chain), token = tokenAddress(chain, 'USDC');
   if (!decimalsChecked.has(chain)) {
     if (await client.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }) !== 6) throw new AppError('METADATA', 'Unexpected USDC metadata.');
     decimalsChecked.add(chain);

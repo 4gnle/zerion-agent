@@ -1,10 +1,15 @@
+import { chainSchema, routeSchema, quoteRoute, tokenCap } from './routes';
 import { z } from 'zod';
 import { isAddress } from 'viem';
 import type { Pending } from './transactions';
-const schema = z.object({ hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/), chain: z.union([z.literal(1), z.literal(42161)]), destination: z.literal(8453).optional(), account: z.string().refine(v => isAddress(v, { strict: false })), sell: z.string().regex(/^[1-9][0-9]{0,15}$/), expected: z.string().regex(/^\d+(\.\d{1,18})?$/), source: z.string().max(80), minimum: z.string().regex(/^\d+(\.\d{1,18})?$/).optional(), sourceConfirmed: z.boolean().optional(), replaced: z.boolean().optional() }).strict();
+const schema = z.object({ hash: z.string().regex(/^0x[0-9a-fA-F]{64}$/), chain: chainSchema, destination: chainSchema.optional(), route: routeSchema.optional(), kind: z.literal('approval').optional(), account: z.string().refine(v => isAddress(v, { strict: false })), sell: z.string().regex(/^[1-9][0-9]{0,15}$/), expected: z.string().regex(/^\d+(\.\d{1,18})?$/), source: z.string().max(80), minimum: z.string().regex(/^\d+(\.\d{1,18})?$/).optional(), sourceConfirmed: z.boolean().optional(), replaced: z.boolean().optional() }).strict();
 export const STORAGE_KEY = 'zerion-agent.arbitrum.pending.v1';
 export function restore(raw: string | null): Pending | null {
-  try { const value = schema.safeParse(JSON.parse(raw || 'null')); return value.success && (value.data.destination !== 8453 || value.data.chain === 42161) ? value.data as Pending : null; } catch { return null; }
+  try { const value = schema.safeParse(JSON.parse(raw || 'null')); if (!value.success) return null;
+    const record = value.data, route = quoteRoute(record);
+    if (!routeSchema.safeParse(route).success || BigInt(record.sell) > tokenCap(route.sellToken) || (record.route ? record.chain !== route.from || record.destination !== (route.from !== route.to ? route.to : undefined) : record.destination !== undefined && (record.destination !== 8453 || record.chain !== 42161))) return null;
+    if (record.kind === 'approval' && (!record.route || route.sellToken !== 'USDC')) return null;
+    return record as Pending; } catch { return null; }
 }
 export function savePending(p: Pending) { try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch { /* Receipt remains in memory if storage is unavailable. */ } }
 export function clearPending() { try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* Optional browser storage. */ } }

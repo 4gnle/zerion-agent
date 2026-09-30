@@ -1,4 +1,7 @@
 import 'server-only';
+import { erc20Abi, formatUnits, zeroAddress } from 'viem';
+import { chainSlug, tokenAddress, tokenDecimals, type Route, type ChainId, type Token } from './routes';
+import { clientFor } from './rpc';
 import { z } from 'zod';
 import type { Address } from 'viem';
 import { USDC, BASE_USDC } from './config';
@@ -68,5 +71,34 @@ export async function getBaseQuote(account: Address, amount: bigint) {
 export async function ethPrice() {
   const schema = z.object({ data: z.object({ attributes: z.object({ market_data: z.object({ price: z.number().positive().finite() }) }) }) });
   const data = schema.parse(await zerionGet('/v1/fungibles/eth', new URLSearchParams({ currency: 'usd' })));
+  return { price: data.data.attributes.market_data.price.toFixed(18), fetchedAt: Date.now() };
+}
+
+const resolvedAssets = new Map<string, string>();
+export async function routeAsset(chain: ChainId, token: Token) {
+  const key = `${chain}:${token}`;
+  const cached = resolvedAssets.get(key); if (cached) return cached;
+  const slug = chainSlug(chain), address = tokenAddress(chain, token);
+  const result = z.object({ data: z.object({ id: z.string(), attributes: z.object({ symbol: z.string(), implementations: z.array(z.object({ chain_id: z.string(), address: z.string().nullish(), decimals: z.number() })) }) }) }).parse(await zerionGet('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: token === 'ETH' ? slug : `${slug}:${address}` })));
+  if (result.data.attributes.symbol !== token || !result.data.attributes.implementations.some(i => i.chain_id === slug && i.decimals === tokenDecimals(token) && (token === 'ETH' ? !i.address || i.address === zeroAddress : i.address?.toLowerCase() === address.toLowerCase()))) throw new AppError('METADATA', 'The token metadata did not match the requested network.', 502);
+  resolvedAssets.set(key, result.data.id); return result.data.id;
+}
+export async function getRouteQuote(account: Address, amount: bigint, route: Route) {
+  const sell = await routeAsset(route.from, route.sellToken), buy = await routeAsset(route.to, route.buyToken);
+  const cross = route.from !== route.to, source = cross ? 'lifi' : 'kyber';
+  const response = z.object({ data: z.array(z.unknown()) }).parse(await zerionGet('/v1/swap/quotes/', new URLSearchParams({ currency: 'usd', from: account, to: account, 'input[chain_id]': chainSlug(route.from), 'input[fungible_id]': sell, 'input[amount]': formatUnits(amount, tokenDecimals(route.sellToken)), 'output[chain_id]': chainSlug(route.to), 'output[fungible_id]': buy, slippage_percent: '0.5' })));
+  const candidate = response.data.find(q => z.object({ attributes: z.object({ liquidity_source: z.object({ id: z.literal(source) }) }) }).safeParse(q).success);
+  if (!candidate) throw new AppError('ROUTE', 'No supported route is available for this pair and amount. Try a different amount.');
+  const quote = normalizeQuote(candidate, account, amount, { sell, buy }, (cross ? process.env.ZERION_BRIDGE_SOURCE_ID : process.env.ZERION_ATOMIC_SOURCE_ID) || '', Date.now(), false, false, route);
+  if (route.sellToken === 'USDC' && quote.swap) {
+    const allowance = await clientFor(route.from).readContract({ address: tokenAddress(route.from, 'USDC'), abi: erc20Abi, functionName: 'allowance', args: [account, quote.swap.to] });
+    quote.approvalRequired = allowance < amount;
+  }
+  return quote;
+}
+export async function tokenPrice(token: Token) {
+  if (token === 'ETH') return ethPrice();
+  const id = await routeAsset(42161, 'USDC');
+  const data = z.object({ data: z.object({ attributes: z.object({ market_data: z.object({ price: z.number().positive().finite() }) }) }) }).parse(await zerionGet(`/v1/fungibles/${encodeURIComponent(id)}`, new URLSearchParams({ currency: 'usd' })));
   return { price: data.data.attributes.market_data.price.toFixed(18), fetchedAt: Date.now() };
 }
