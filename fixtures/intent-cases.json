@@ -148,8 +148,14 @@
     {
       "text": "swap $5 of ETH for USDC",
       "expected": {
-        "status": "unsupported",
-        "reason": "unsupported_request"
+        "status": "ready",
+        "sellToken": "ETH",
+        "buyToken": "USDC",
+        "chain": "arbitrum",
+        "amountType": "usd",
+        "amount": "5",
+        "recipient": "self",
+        "reason": "none"
       },
       "liveSmoke": true
     },
@@ -316,8 +322,14 @@
     {
       "text": "Bridge half my ETH from Arbitrum to USDC on Base",
       "expected": {
-        "status": "unsupported",
-        "reason": "unsupported_request"
+        "status": "ready",
+        "sellToken": "ETH",
+        "buyToken": "USDC",
+        "chain": "base",
+        "amountType": "percentage",
+        "amount": "50",
+        "recipient": "self",
+        "reason": "none"
       },
       "liveSmoke": true
     },
@@ -364,6 +376,34 @@
         "reason": "unsupported_request"
       },
       "liveSmoke": false
+    },
+    {
+      "text": "Bridge $2 of ETH from Arbitrum to Base then swap to USDC",
+      "expected": {
+        "status": "ready",
+        "sellToken": "ETH",
+        "buyToken": "USDC",
+        "chain": "base",
+        "amountType": "usd",
+        "amount": "2",
+        "recipient": "self",
+        "reason": "none"
+      },
+      "liveSmoke": true
+    },
+    {
+      "text": "I want to turn $20 worth of ETH into USDC",
+      "expected": {
+        "status": "ready",
+        "sellToken": "ETH",
+        "buyToken": "USDC",
+        "chain": "arbitrum",
+        "amountType": "usd",
+        "amount": "20",
+        "recipient": "self",
+        "reason": "none"
+      },
+      "liveSmoke": true
     }
   ]
 }

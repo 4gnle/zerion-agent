@@ -5,7 +5,7 @@ for(const viewport of [{width:1440,height:1000},{width:390,height:844}]) {
   await page.setViewportSize(viewport);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   let calls=0;
   await page.route('**/api/intent',async route=>{calls++;await new Promise(r=>setTimeout(r,350));await route.fulfill({json:{intent}});});
-  await page.goto('/');await expect(page.getByRole('heading',{name:'Wallet Agent'})).toBeVisible();
+  await page.goto('/');await expect(page.getByText('Swap and bridge with one instruction',{exact:true})).toBeVisible();
   await expect(page.getByText('Demo wallet',{exact:true})).toBeVisible();
   await page.screenshot({path:`.local/idle-${viewport.width}.png`,fullPage:true});
   await page.getByRole('button',{name:'Swap half my ETH for USDC'}).click();
@@ -32,4 +32,22 @@ test('double submit, error and retry keep the flow recoverable',async({page})=>{
  await page.getByLabel('What would you like to do?').press('Enter');await page.keyboard.press('Enter');
  await expect(page.getByRole('heading',{name:'Couldn’t continue'})).toBeVisible();expect(calls).toBe(1);
  await page.screenshot({path:'.local/error.png',fullPage:true});await page.getByRole('button',{name:'Edit and try again'}).click();await expect(page.getByLabel('What would you like to do?')).toBeFocused();
+});
+
+test('USD quote refresh recalculates ETH and blocks stale prices', async ({ page }) => {
+ let priceCalls = 0;
+ await page.route('**/api/intent', route => route.fulfill({ json: { intent: { ...intent, amountType: 'usd', amount: '2' } } }));
+ await page.route('**/api/price', route => route.fulfill({ json: { price: ++priceCalls === 1 ? '2000' : '2500', fetchedAt: Date.now() - (priceCalls === 1 ? 28500 : 0) } }));
+ await page.goto('/');
+ await page.getByLabel('What would you like to do?').fill('Swap $2 worth of ETH for USDC');
+ await page.getByRole('button', { name: 'Submit instruction', exact: true }).click();
+ await expect(page.getByText('0.001 ETH', { exact: true })).toBeVisible();
+ await page.getByRole('button', { name: 'Refresh quote', exact: true }).click();
+ await expect(page.getByText('0.0008 ETH', { exact: true })).toBeVisible();
+ expect(priceCalls).toBe(2);
+ await page.getByRole('button', { name: 'Edit', exact: true }).click();
+ await page.route('**/api/price', route => route.fulfill({ json: { price: '2500', fetchedAt: Date.now() - 60000 } }));
+ await page.getByRole('button', { name: 'Submit instruction', exact: true }).click();
+ await expect(page.locator('.error-card[role=alert]')).toContainText('Price expired');
+ await expect(page.getByRole('button', { name: 'Simulate swap', exact: true })).not.toBeVisible();
 });

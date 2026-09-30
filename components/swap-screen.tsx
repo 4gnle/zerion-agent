@@ -2,13 +2,14 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { WalletHistory } from './wallet-history';
+import { ChainPicker } from './chain-picker';
 import { HeaderPopover } from './header-popover';
 import { WalletBalances } from './wallet-balances';
 import { useConfig, useConnect, useConnection, useConnectors, useDisconnect, useSwitchChain } from 'wagmi';
 import { getConnection, getWalletClient } from 'wagmi/actions';
 import type { Address } from 'viem';
-import { arbitrum, BRIDGE_EXAMPLE, EXAMPLE, USDC, type Mode } from '@/lib/config';
-import { amountFor, checkFreshBalance, eth } from '@/lib/amounts';
+import { arbitrum, BRIDGE_EXAMPLE, EXAMPLE, USDC, BASE_USDC, type Mode } from '@/lib/config';
+import { amountFor, checkFreshBalance, eth, usdToWei } from '@/lib/amounts';
 import { validateIntent, type ReadyIntent } from '@/lib/intent';
 import { AppError, message } from '@/lib/errors';
 import { reducer, unresolved, type Review, type State } from '@/lib/flow';
@@ -29,7 +30,7 @@ async function post<T>(path: string, body: unknown, signal: AbortSignal): Promis
 }
 const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
 function Spinner() { return <span className="spinner" aria-hidden="true" />; }
-function Explorer({ hash, chain = 42161 }: { hash: string; chain?: number }) { return <a href={`https://${chain === 1 ? 'etherscan.io' : 'arbiscan.io'}/tx/${hash}`} target="_blank" rel="noreferrer">View on {chain === 1 ? 'Etherscan' : 'Arbiscan'} <span aria-hidden="true">↗</span></a>; }
+function Explorer({ hash, chain = 42161 }: { hash: string; chain?: number }) { return <a href={`https://${chain === 1 ? 'etherscan.io' : chain === 8453 ? 'basescan.org' : 'arbiscan.io'}/tx/${hash}`} target="_blank" rel="noreferrer">View on {chain === 1 ? 'Etherscan' : chain === 8453 ? 'Basescan' : 'Arbiscan'} <span aria-hidden="true">↗</span></a>; }
 
 export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }) {
   const simulation = mode === 'simulation';
@@ -40,7 +41,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
   const currentState = useRef(state); currentState.current = state;
   const [text, setText] = useState(''); const [sentence, setSentence] = useState('');
   const [walletMenu, setWalletMenu] = useState(false); const [walletError, setWalletError] = useState('');
-  const [now, setNow] = useState(0); const [copied, setCopied] = useState(false);
+  const [expiredAt, setExpiredAt] = useState(0); const [copied, setCopied] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null); const busy = useRef(false); const attempt = useRef(0);
   const controller = useRef<AbortController | null>(null); const restored = useRef(false);
   const previousWallet = useRef<string | null>(null);
@@ -50,7 +51,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
   const locked = unresolved(state); const reading = state.phase === 'interpreting' || state.phase === 'quoting';
   const walletBusy = connect.isPending || switchChain.isPending;
   const disabled = locked || reading || walletBusy;
-  const expired = !!review && now >= review.quote.validUntil;
+  const expired = !!review && expiredAt >= review.quote.validUntil;
   const put = (next: State) => dispatch({ type: 'replace', state: next });
   const freshController = () => { controller.current?.abort(); controller.current = new AbortController(); return controller.current.signal; };
   function matches(id: number, account?: Address, chain = arbitrum.id as number) {
@@ -66,16 +67,24 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     const account = simulation ? SIM_ACCOUNT : getConnection(config).address;
     if (!simulation && (!account || getConnection(config).chainId !== chain)) { put({ phase: 'connecting', attempt: id, intent }); return; }
     if (!account) return;
-    put({ phase: 'quoting', attempt: id });
+    put({ phase: 'quoting', attempt: id, review: previous });
     const signal = freshController();
     const balance = simulation ? SIM_BALANCE : (await readBalances(account, chain)).eth;
     if (!matches(id, account, chain)) return;
     if (previous) checkFreshBalance(intent, BigInt(previous.balance), balance, BigInt(previous.quote.sell));
-    const amount = previous ? BigInt(previous.quote.sell) : amountFor(intent, balance);
-    const quote = simulation ? (await pause(650), simulatedQuote(amount, chain === 1)) : (await post<{ quote: Quote }>('/api/quote', { account, sellAmountBaseUnits: amount.toString(), ...(chain === 1 ? {action: 'bridge'} : {}) }, signal)).quote;
+    let usd: Review['usd'];
+    let resolved = intent;
+    if (intent.amountType === 'usd') {
+      const price = await post<{ price: string; fetchedAt: number }>('/api/price', {}, signal);
+      if (!Number.isFinite(price.fetchedAt) || Date.now() - price.fetchedAt > 30000 || price.fetchedAt > Date.now() + 5000) throw new AppError('PRICE', 'Price expired. Try again.');
+      resolved = { ...intent, amountType: 'exact', amount: eth(usdToWei(intent.amount, price.price)) };
+      usd = { amount: intent.amount, ...price };
+    }
+    const amount = previous && intent.amountType !== 'usd' ? BigInt(previous.quote.sell) : amountFor(resolved, balance);
+    const quote = simulation ? (await pause(650), simulatedQuote(amount, chain === 1, intent.chain === 'base')) : (await post<{ quote: Quote }>('/api/quote', { account, sellAmountBaseUnits: amount.toString(), ...(chain === 1 ? {action: 'bridge'} : intent.chain === 'base' ? {action: 'base'} : {}) }, signal)).quote;
     if (!matches(id, account, chain)) return;
-    put({ phase: 'review', attempt: id, review: { quote, intent, balance: balance.toString() } });
-    setNow(Date.now());
+    if (usd) quote.validUntil = Math.min(quote.validUntil, usd.fetchedAt + 30000);
+    put({ phase: 'review', attempt: id, review: { quote, intent, balance: balance.toString(), usd } });
   }
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy.current || disabled || !text.trim()) return;
@@ -89,7 +98,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
   }
   async function refresh(previous: Review) {
     if (busy.current) return; busy.current = true;
-    try { await prepare(previous.intent, attempt.current, previous); } catch (e) { showError(e, attempt.current); } finally { busy.current = false; }
+    try { await prepare(previous.intent, attempt.current, previous); } catch (e) { showError(e, attempt.current, previous); } finally { busy.current = false; }
   }
   function edit() {
     if (locked || busy.current) return;
@@ -100,7 +109,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     put({ phase: 'swapPending', attempt: id, pending: record, review: previous });
     try {
       const receipt = record.sourceConfirmed ? {transactionHash: record.hash} : await monitor(record, next => { latest = next; savePending(next); put({ phase: 'swapPending', attempt: id, pending: next, review: previous }); });
-      if (record.chain === 1) {
+      if (record.chain === 1 || record.destination === 8453) {
         latest = { ...latest, sourceConfirmed: true }; savePending(latest);
         void queryClient.invalidateQueries({ queryKey: ['wallet-balances', record.account.toLowerCase()] });
         const result = await bridgeStatus(latest);
@@ -108,7 +117,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
           put({ phase: 'unknownPending', attempt: id, pending: latest, review: previous, error: result.message }); return;
         }
         clearPending();
-        put({ phase: 'confirmed', attempt: id, sell: record.sell, expected: record.expected, bridge: true, hash: result.destinationHash, sourceHash: latest.hash, simulated: false });
+        put({ phase: 'confirmed', attempt: id, sell: record.sell, expected: record.expected, bridge: true, destination: record.destination, hash: result.destinationHash, sourceHash: latest.hash, simulated: false });
       } else { clearPending();
       put({ phase: 'confirmed', attempt: id, sell: record.sell, expected: record.expected, hash: receipt.transactionHash, simulated: false }); }
       void queryClient.invalidateQueries({ queryKey: ['wallet-balances', record.account.toLowerCase()] });
@@ -119,7 +128,7 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     }
   }
   async function perform(r: Review) {
-    if (busy.current || expired) return;
+    if (busy.current || Date.now() >= r.quote.validUntil) return;
     busy.current = true; const id = attempt.current;
     put({ phase: 'swapSignature', attempt: id, review: r });
     try {
@@ -127,19 +136,22 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
         await simulateStep(r.quote);
         put({ phase: 'swapPending', attempt: id, review: r, simulated: true });
         await pause(1100);
-        put({ phase: 'confirmed', attempt: id, sell: r.quote.sell, expected: r.quote.expected, bridge: r.quote.chain === 1, simulated: true });
+        put({ phase: 'confirmed', attempt: id, sell: r.quote.sell, expected: r.quote.expected, bridge: r.quote.chain === 1 || r.quote.destination === 8453, destination: r.quote.destination, simulated: true });
       } else {
         const wallet = await getWalletClient(config);
         const hash = await sendSwap(r.quote, wallet, r.intent, BigInt(r.balance), () => matches(id, r.quote.account, r.quote.chain));
-        const record: Pending = { hash, chain: r.quote.chain, minimum: r.quote.minimum, account: r.quote.account, sell: r.quote.sell, expected: r.quote.expected, source: r.quote.sourceName };
+        const record: Pending = { hash, chain: r.quote.chain, destination: r.quote.destination, minimum: r.quote.minimum, account: r.quote.account, sell: r.quote.sell, expected: r.quote.expected, source: r.quote.sourceName };
         savePending(record); await track(record, id, r);
       }
     } catch (e) { showError(e, id, e instanceof AppError && e.code === 'CANCELLED' ? r : undefined); }
     finally { busy.current = false; }
   }
   useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(tick);
-  }, []);
+    if (!review) return;
+    const deadline = review.quote.validUntil;
+    const timer = setTimeout(() => setExpiredAt(deadline), Math.max(0, deadline - Date.now()));
+    return () => clearTimeout(timer);
+  }, [review]);
   useEffect(() => {
     if (state.phase === 'idle' && focusRequested.current) { focusRequested.current = false; input.current?.focus(); }
   }, [state.phase, state.attempt]);
@@ -170,18 +182,19 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     try { await prepare(intent, attempt.current); } catch (e) { showError(e, attempt.current); } finally { busy.current = false; }
   }
   async function copy(address: string) { try { await navigator.clipboard.writeText(address); setCopied(true); } catch { setCopied(false); } }
-  const isBridge = review?.quote.chain === 1 || pending?.chain === 1 || (state.phase === 'connecting' && state.intent.chain === 'ethereum');
-  const sourceName = isBridge ? 'Ethereum' : 'Arbitrum';
-  const targetChain = isBridge ? 1 : arbitrum.id;
-  const outputToken = isBridge ? 'ETH' : 'USDC';
-  const statusText = state.phase === 'interpreting' ? 'Understanding your instruction…' : state.phase === 'quoting' ? 'Getting a quote…' : state.phase === 'swapSignature' ? simulation ? 'Simulating wallet confirmation…' : `Review the ${isBridge ? 'bridge' : 'swap'} in your wallet.` : state.phase === 'swapPending' ? isBridge ? 'Waiting for Ethereum confirmation…' : 'Waiting for swap confirmation…' : state.phase === 'unknownPending' ? state.error : '';
+  const baseRoute = review?.quote.destination === 8453 || pending?.destination === 8453 || (state.phase === 'connecting' && state.intent.chain === 'base');
+  const isBridge = baseRoute || review?.quote.chain === 1 || pending?.chain === 1 || (state.phase === 'connecting' && state.intent.chain === 'ethereum');
+  const sourceName = isBridge && !baseRoute ? 'Ethereum' : 'Arbitrum';
+  const targetChain = isBridge && !baseRoute ? 1 : arbitrum.id;
+  const outputToken = isBridge && !baseRoute ? 'ETH' : 'USDC';
+  const statusText = state.phase === 'interpreting' ? 'Understanding your instruction…' : state.phase === 'quoting' ? 'Getting a quote…' : state.phase === 'swapSignature' ? simulation ? 'Simulating wallet confirmation…' : `Review the ${isBridge ? 'bridge' : 'swap'} in your wallet.` : state.phase === 'swapPending' ? isBridge ? `Waiting for ${sourceName} confirmation…` : 'Waiting for swap confirmation…' : state.phase === 'unknownPending' ? state.error : '';
 
   const hasReview = !!review || state.phase === 'confirmed';
-  return <div className={`app-shell${hasReview ? ' has-review' : ''}`}>
+  return <div className="app-shell">
     <a className="skip-link" href="#main">Skip to swap</a>
     <header className="header">
       <a className="wordmark" href="/" aria-label="Wallet Agent home">Wallet Agent</a>
-      <div className="header-actions"><select className="network-select" aria-label="Connected network" value={simulation ? arbitrum.id : connection.address && [1, arbitrum.id].includes(connection.chainId ?? 0) ? connection.chainId : ''} disabled={simulation || !connection.address || disabled} onChange={e => void walletAction(() => switchChain.mutateAsync({ chainId: Number(e.target.value) }))}><option value="" disabled>{connection.address ? 'Choose network' : 'Not connected'}</option><option value={1}>Ethereum</option><option value={arbitrum.id}>Arbitrum</option></select>
+      <div className="header-actions"><ChainPicker chainId={simulation ? arbitrum.id : connection.address ? connection.chainId : undefined} disabled={simulation || !connection.address || disabled} onChange={chainId => void walletAction(() => switchChain.mutateAsync({ chainId }))} />
         {simulation ? <span className="demo-wallet">{scripted ? 'Scripted demo' : 'Demo wallet'}</span> : <div className="wallet-wrap">
           <button className="wallet-button" disabled={disabled} onClick={() => setWalletMenu(!walletMenu)} aria-expanded={walletMenu}>{walletBusy ? 'Connecting…' : connection.address ? shortAddress(connection.address) : 'Connect wallet'}</button>
           {walletMenu && <div className="wallet-menu"><p>Choose your desktop wallet</p>{connection.address ? <button onClick={() => void walletAction(() => disconnect.mutateAsync({}))}>Disconnect</button> : connectors.length ? connectors.map(c => <button key={c.uid} onClick={() => void walletAction(() => connect.mutateAsync({ connector: c }))}>{c.name}</button>) : <p>Open this demo with an Ethereum wallet extension.</p>}</div>}
@@ -192,39 +205,58 @@ export function SwapScreen({ mode, scripted }: { mode: Mode; scripted: boolean }
     <div className="workspace"><WalletHistory account={simulation ? undefined : connection.address} pending={pending} />
     <main id="main">
       <div className="agent-content">
-      <section className="intro"><h1>Wallet Agent</h1><p className="subtitle">Swap on Arbitrum or bridge from Ethereum</p></section>
+      <section className="intro"><p className="subtitle">Swap and bridge with one instruction</p></section>
       {walletError && <p className="wallet-error" role="alert">{walletError}</p>}
-      <form className="composer" onSubmit={submit} hidden={hasReview && state.phase !== 'error' && state.phase !== 'ambiguous'}>
+      <form className="composer" onSubmit={submit} hidden={hasReview}>
         <label htmlFor="instruction">What would you like to do?</label>
         <div className="input-wrap"><textarea ref={input} id="instruction" rows={2} value={text} maxLength={160} disabled={disabled} placeholder={EXAMPLE} onChange={e => { setText(e.target.value); if (state.phase !== 'idle') edit(); }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!disabled) e.currentTarget.form?.requestSubmit(); } }} />
           <button className="send-button" type="submit" disabled={disabled || !text.trim()} aria-label="Submit instruction">{reading ? <Spinner /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>}</button>
         </div>
         <div className="composer-meta"><span>{text.length}/160</span></div>
       </form>
-      {state.phase === 'idle' && <div className="starter"><span>Try</span><button className="example" onClick={() => { setText(EXAMPLE); input.current?.focus(); }}>{EXAMPLE} <span aria-hidden="true">↗</span></button><button className="example" onClick={() => { setText(BRIDGE_EXAMPLE); input.current?.focus(); }}>Bridge ETH to Arbitrum <span aria-hidden="true">↗</span></button></div>}
+      {state.phase === 'idle' && <div className="starter"><span>Try</span><button className="example" onClick={() => { setText(EXAMPLE); input.current?.focus(); }}>{EXAMPLE} <span aria-hidden="true">↗</span></button><button className="example" onClick={() => { setText('Bridge $2 of ETH from Arbitrum to Base then swap to USDC'); input.current?.focus(); }}>Get USDC on Base <span aria-hidden="true">↗</span></button><button className="example" onClick={() => { setText(BRIDGE_EXAMPLE); input.current?.focus(); }}>Bridge ETH to Arbitrum <span aria-hidden="true">↗</span></button></div>}
       {sentence && state.phase !== 'idle' && <p className="sentence">{sentence}</p>}
       <div className="flow" aria-busy={reading}>
         <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{statusText || (state.phase === 'review' ? 'Quote ready. Review the amounts before continuing.' : state.phase === 'confirmed' ? simulation ? 'Simulation complete.' : state.bridge ? 'Bridge complete.' : 'Swap confirmed.' : '')}</div>
-        {reading && <section className="review-card loading-card"><div className="status-line"><Spinner /><p>{statusText}</p></div><div className="skeleton wide" /><div className="skeleton narrow" /><div className="skeleton wide" /></section>}
+        {reading && !review && <section className="review-card loading-card"><div className="status-line"><Spinner /><p>{statusText}</p></div><div className="skeleton wide" /><div className="skeleton narrow" /><div className="skeleton wide" /></section>}
         {state.phase === 'connecting' && <section className="review-card"><h2>{connection.address ? `Use ${sourceName}` : 'Connect your wallet'}</h2><p className="muted">{connection.address ? `This action uses your ETH on ${sourceName}.` : `Connect your wallet to use your ${sourceName} ETH balance.`}</p>{connection.address && connection.chainId !== targetChain ? <button className="primary" disabled={walletBusy} onClick={() => void walletAction(() => switchChain.mutateAsync({ chainId: targetChain }))}>Switch to {sourceName}</button> : connection.address ? <button className="primary" onClick={() => void continueIntent(state.intent)}>Get quote</button> : <button className="primary" onClick={() => setWalletMenu(true)}>Choose wallet</button>}<button className="text-button" onClick={edit}>Edit instruction</button></section>}
-        {review && !['error','ambiguous'].includes(state.phase) && <section className="review-card">
-          <div className="card-top"><h2>Review your {isBridge ? 'bridge' : 'swap'}</h2><span className="small muted">{simulation ? 'Simulated quote' : 'Via Zerion'}</span></div>
-          <div className="token-row"><div><p className="small muted">You pay</p><p className={`amount${eth(review.quote.sell).length > 14 ? ' long' : ''}`}>{eth(review.quote.sell)} <span>ETH</span></p><p className="small muted">{review.intent.amountType === 'percentage' ? `${review.intent.amount}% of your ${sourceName} ETH` : `Balance: ${eth(review.balance)} ETH`}</p></div><span className="token-marker eth-marker" aria-hidden="true">Ξ</span></div>
-          <div className="direction" aria-hidden="true">↓</div>
-          <div className="token-row"><div><p className="small muted">You receive <span>(estimated)</span></p><p className="amount" title={`${review.quote.expected} ${outputToken}`}>{review.quote.expected} <span>{outputToken}</span></p><p className="small muted">In the same wallet, on Arbitrum</p></div><span className="token-marker" aria-hidden="true">{isBridge ? 'Ξ' : '$'}</span></div>
-          <dl className="quote-details">{isBridge && <><div><dt>From</dt><dd>Ethereum</dd></div><div><dt>To</dt><dd>Arbitrum</dd></div></>}<div><dt>Minimum received</dt><dd>{review.quote.minimum} {outputToken}</dd></div><div><dt>Slippage</dt><dd>0.5%</dd></div><div><dt>Network fee <span className="muted">(est.)</span></dt><dd>{review.quote.networkFee.label}</dd></div><div><dt>Provider fee</dt><dd>{review.quote.providerFee.label}</dd></div>{isBridge && <div><dt>Bridge fee</dt><dd>{review.quote.bridgeFee?.label ?? 'Unavailable'}</dd></div>}{isBridge && review.quote.estimatedSeconds != null && <div><dt>Estimated delivery</dt><dd>~{review.quote.estimatedSeconds}s</dd></div>}<div><dt>Route</dt><dd>{review.quote.sourceName}</dd></div></dl>
-          <details><summary>Details</summary><div className="technical-details">{!isBridge && <p><strong>USDC contract</strong><span>{USDC}</span></p>}<p><strong>Recipient{simulation ? ' (simulated)' : ''}</strong><span>{review.quote.account}</span><button className="copy-button" onClick={() => void copy(review.quote.account)}>{copied ? 'Copied' : 'Copy address'}</button></p><p>{review.quote.providerFee.inclusion}</p><p>{review.quote.networkFee.inclusion}</p><p>ETH pays for the action and source-network gas. The app reserves a gas margin; review the final fee in your wallet.</p></div></details>
-          <ol className="steps" aria-label="Swap progress"><li className="active">Confirm {isBridge ? 'on Ethereum' : 'swap'}</li><li>{isBridge ? 'Receive on Arbitrum' : 'Confirmed'}</li></ol>
-          {state.phase === 'review' ? <>
-            <p className="action-hint">Review the amounts, then confirm in your wallet. No token approval is needed.</p>
+        {review && state.phase !== 'ambiguous' && <section className="review-card">
+          <div className="card-top"><h2>Review your {baseRoute ? 'plan' : isBridge ? 'bridge' : 'swap'}</h2><span className="small muted">{simulation ? 'Simulated quote' : 'Via Zerion'}</span></div>
+          <div className="review-amounts">
+            <div className="token-row"><div><p className="small muted">You pay · {sourceName}</p><p className="amount" title={`${eth(review.quote.sell)} ETH`}>{Number(eth(review.quote.sell)).toLocaleString('en-US', { maximumSignificantDigits: 6 })} <span>ETH</span></p><p className="small muted">{review.usd ? `≈ $${review.usd.amount}` : review.intent.amountType === 'percentage' ? `${review.intent.amount}% of your ETH` : 'Gas is additional'}</p></div><span className="token-marker eth-marker" aria-hidden="true">Ξ</span></div>
+            <div className="direction" aria-hidden="true">↓</div>
+            <div className="token-row"><div><p className="small muted">You receive · {baseRoute ? 'Base' : 'Arbitrum'}</p><p className="amount">{review.quote.expected} <span>{outputToken}</span></p><p className="small muted">Estimated · Same wallet</p></div><span className="token-marker" aria-hidden="true">{outputToken === 'ETH' ? 'Ξ' : '$'}</span></div>
+          </div>
+          <details className="review-details"><summary>Details</summary>
+            <dl className="quote-details">
+              <div><dt>Exact payment</dt><dd>{eth(review.quote.sell)} ETH</dd></div>
+              <div><dt>Balance</dt><dd>{eth(review.balance)} ETH</dd></div>
+              <div><dt>Minimum received</dt><dd>{review.quote.minimum} {outputToken}</dd></div>
+              <div><dt>Slippage</dt><dd>0.5%</dd></div>
+              <div><dt>Network fee (est.)</dt><dd>{review.quote.networkFee.label}</dd></div>
+              <div><dt>Provider fee</dt><dd>{review.quote.providerFee.label}</dd></div>
+              {isBridge && <div><dt>Bridge fee</dt><dd>{!review.quote.bridgeFee || review.quote.bridgeFee.label === 'Unavailable' ? 'Not separately provided' : review.quote.bridgeFee.label}</dd></div>}
+              {isBridge && review.quote.estimatedSeconds != null && <div><dt>Estimated delivery</dt><dd>~{review.quote.estimatedSeconds}s</dd></div>}
+              <div><dt>Route</dt><dd>{review.quote.sourceName}</dd></div>
+            </dl>
+            <div className="technical-details">
+              {review.usd && <p>Approximately ${review.usd.amount} of ETH at ${Number(review.usd.price).toFixed(2)}/ETH. Gas is additional; refreshing recalculates the ETH amount.</p>}
+              {baseRoute && <p>The quoted route bridges from Arbitrum and converts to USDC on Base.</p>}
+              {(!isBridge || baseRoute) && <p><strong>USDC contract</strong><span>{baseRoute ? BASE_USDC : USDC}</span></p>}
+              <p><strong>Recipient{simulation ? ' (simulated)' : ''}</strong><span>{review.quote.account}</span><button className="copy-button" onClick={() => void copy(review.quote.account)}>{copied ? 'Copied' : 'Copy address'}</button></p>
+              <p>{review.quote.providerFee.inclusion}</p><p>{review.quote.networkFee.inclusion}</p><p>ETH pays for the action and source-network gas. Review the final fee in your wallet.</p>
+            </div>
+          </details>
+          {['review', 'quoting', 'error'].includes(state.phase) ? <>
+            {state.phase === 'error' && <p className="error-text" role="alert">{state.error}</p>}
             {!simulation && !review.quote.executable && <p className="error-text" role="alert">{review.quote.blockedReason}</p>}
-            <button className="primary" disabled={!simulation && !review.quote.executable && !expired} onClick={() => void (expired ? refresh(review) : perform(review))}>{expired ? 'Refresh quote' : simulation ? isBridge ? 'Simulate bridge' : 'Simulate swap' : isBridge ? 'Confirm bridge' : 'Confirm swap'}</button>
-            <div className="card-bottom"><button className="text-button" onClick={edit}>Edit</button><span className="small muted">{expired ? 'Quote expired' : `Quote expires in ${Math.max(0, Math.ceil((review.quote.validUntil - now) / 1000))}s`}</span></div>
-          </> : <div className="pending-status"><div className="status-line"><Spinner /><p>{statusText}</p></div>{pending && <><Explorer hash={pending.hash} chain={pending.chain} />{pending.chain === 1 && <a href={`https://scan.li.fi/tx/${pending.hash}`} target="_blank" rel="noreferrer">Track bridge ↗</a>}</>}{state.phase === 'unknownPending' && <button className="primary" onClick={() => { if (pending && !busy.current) { busy.current = true; void track(pending, attempt.current, review).finally(() => { busy.current = false; }); } }}>Check status</button>}</div>}
+            <button className="primary" disabled={reading || (!simulation && !review.quote.executable && !expired && state.phase !== 'error')} onClick={() => void (expired || state.phase === 'error' ? refresh(review) : perform(review))}>{reading ? 'Refreshing quote…' : expired || state.phase === 'error' ? 'Refresh quote' : simulation ? isBridge ? 'Simulate bridge' : 'Simulate swap' : baseRoute ? 'Confirm plan' : isBridge ? 'Confirm bridge' : 'Confirm swap'}</button>
+            <div className="card-bottom"><button className="text-button" disabled={reading} onClick={edit}>Edit</button><span className="small muted">{reading ? 'Updating amounts' : expired ? 'Quote expired' : 'Confirm in your wallet'}</span></div>
+          </> : <div className="pending-status"><div className="status-line"><Spinner /><p>{statusText}</p></div>{pending && <><Explorer hash={pending.hash} chain={pending.chain} />{(pending.chain === 1 || pending.destination === 8453) && <a href={`https://scan.li.fi/tx/${pending.hash}`} target="_blank" rel="noreferrer">Track bridge ↗</a>}</>}{state.phase === 'unknownPending' && <button className="primary" onClick={() => { if (pending && !busy.current) { busy.current = true; void track(pending, attempt.current, review).finally(() => { busy.current = false; }); } }}>Check status</button>}</div>}
         </section>}
-        {pending && !review && <section className="review-card"><h2>Checking your transaction</h2><p>{statusText}</p><p className="small muted">Original account: {shortAddress(pending.account)} · {pending.chain === 1 ? 'Ethereum' : 'Arbitrum'}</p><Explorer hash={pending.hash} chain={pending.chain} />{pending.chain === 1 && <a href={`https://scan.li.fi/tx/${pending.hash}`} target="_blank" rel="noreferrer">Track bridge ↗</a>}{state.phase === 'unknownPending' && <button className="primary" onClick={() => { if (!busy.current) { busy.current = true; void track(pending, attempt.current).finally(() => { busy.current = false; }); } }}>Check status</button>}</section>}
-        {(state.phase === 'error' || state.phase === 'invalidated' || state.phase === 'ambiguous') && <section className="review-card error-card" role="alert"><span className="error-symbol" aria-hidden="true">!</span><h2>{state.phase === 'ambiguous' ? 'Check your wallet activity' : state.phase === 'invalidated' ? 'Let’s review that again' : 'Couldn’t continue'}</h2><p>{state.error}</p>{state.phase === 'ambiguous' ? <button className="primary" onClick={() => { attempt.current++; put({ phase: 'idle', attempt: attempt.current }); }}>I checked: nothing is pending</button> : state.review ? <button className="primary" onClick={() => void refresh(state.review!)}>Review a fresh quote</button> : <button className="primary" onClick={edit}>Edit and try again</button>}</section>}
-        {state.phase === 'confirmed' && <section className="review-card success-card"><div className="success-symbol" aria-hidden="true">✓</div><h2>{state.simulated ? 'Simulation complete' : state.bridge ? 'Bridge complete' : 'Swap confirmed'}</h2><p className="success-amount">{eth(state.sell)} ETH <span aria-hidden="true">→</span> {state.bridge ? 'ETH on Arbitrum' : 'USDC'}</p><p className="muted">Quoted output: {state.expected} {state.bridge ? 'ETH' : 'USDC'}</p>{state.simulated ? <p className="small muted">No funds moved. No wallet signature was requested.</p> : state.hash && <Explorer hash={state.hash} />}<button className="primary" onClick={() => { setText(''); setSentence(''); edit(); }}>Start another {state.bridge ? 'action' : 'swap'}</button></section>}
+        {pending && !review && <section className="review-card"><h2>Checking your transaction</h2><p>{statusText}</p><p className="small muted">Original account: {shortAddress(pending.account)} · {pending.chain === 1 ? 'Ethereum' : 'Arbitrum'}</p><Explorer hash={pending.hash} chain={pending.chain} />{(pending.chain === 1 || pending.destination === 8453) && <a href={`https://scan.li.fi/tx/${pending.hash}`} target="_blank" rel="noreferrer">Track bridge ↗</a>}{state.phase === 'unknownPending' && <button className="primary" onClick={() => { if (!busy.current) { busy.current = true; void track(pending, attempt.current).finally(() => { busy.current = false; }); } }}>Check status</button>}</section>}
+        {((state.phase === 'error' && !review) || state.phase === 'invalidated' || state.phase === 'ambiguous') && <section className="review-card error-card" role="alert"><span className="error-symbol" aria-hidden="true">!</span><h2>{state.phase === 'ambiguous' ? 'Check your wallet activity' : state.phase === 'invalidated' ? 'Let’s review that again' : 'Couldn’t continue'}</h2><p>{state.error}</p>{state.phase === 'ambiguous' ? <button className="primary" onClick={() => { attempt.current++; put({ phase: 'idle', attempt: attempt.current }); }}>I checked: nothing is pending</button> : state.review ? <button className="primary" onClick={() => void refresh(state.review!)}>Review a fresh quote</button> : <button className="primary" onClick={edit}>Edit and try again</button>}</section>}
+        {state.phase === 'confirmed' && <section className="review-card success-card"><div className="success-symbol" aria-hidden="true">✓</div><h2>{state.simulated ? 'Simulation complete' : state.destination === 8453 ? 'Plan complete' : state.bridge ? 'Bridge complete' : 'Swap confirmed'}</h2><p className="success-amount">{eth(state.sell)} ETH <span aria-hidden="true">→</span> {state.destination === 8453 ? 'USDC on Base' : state.bridge ? 'ETH on Arbitrum' : 'USDC'}</p><p className="muted">Quoted output: {state.expected} {state.bridge && state.destination !== 8453 ? 'ETH' : 'USDC'}</p>{state.simulated ? <p className="small muted">No funds moved. No wallet signature was requested.</p> : state.hash && <Explorer hash={state.hash} chain={state.destination ?? 42161} />}<button className="primary" onClick={() => { setText(''); setSentence(''); edit(); }}>Start another {state.bridge ? 'action' : 'swap'}</button></section>}
       </div>
       </div>
     </main></div>

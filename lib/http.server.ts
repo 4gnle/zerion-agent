@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { protectPublicApi, type Operation } from './public-access.server';
 import { AppError } from './errors';
 const gates = new Map<string, { count: number; since: number; active: boolean }>();
 export function appMode() { const mode = process.env.APP_MODE || 'simulation'; if (mode !== 'live' && mode !== 'simulation') throw new AppError('CONFIG', 'APP_MODE must be live or simulation.', 503); return mode; }
-export function allowsOrigin(request: Request, configured = process.env.APP_ORIGIN || 'http://127.0.0.1:3000') {
+export function allowsOrigin(request: Request, configured = process.env.APP_ORIGIN || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000')) {
   try {
     const origin = request.headers.get('origin');
     if (!origin) return false;
@@ -14,12 +15,12 @@ export function allowsOrigin(request: Request, configured = process.env.APP_ORIG
     return incoming.origin === expected.origin || (local.has(expected.hostname) && local.has(incoming.hostname) && incoming.protocol === expected.protocol && incoming.port === expected.port);
   } catch { return false; }
 }
-export async function handle<T>(request: Request, operation: 'intent' | 'quote' | 'history' | 'bridgeStatus', schema: z.ZodType<T>, fn: (body: T) => Promise<unknown>) {
+export async function handle<T>(request: Request, operation: Operation, schema: z.ZodType<T>, fn: (body: T) => Promise<unknown>) {
   let release: (() => void) | undefined;
   try {
-    if (!allowsOrigin(request)) throw new AppError('ORIGIN', 'Open this app on its configured local address and try again.', 403);
+    if (!allowsOrigin(request)) throw new AppError('ORIGIN', 'Open this app on its configured address and try again.', 403);
     if (!request.headers.get('content-type')?.startsWith('application/json')) throw new AppError('CONTENT_TYPE', 'Expected JSON.', 415);
-    // Local-only server; do not trust caller-supplied forwarding/IP headers.
+    // Best-effort per-instance guard supplements the hosted edge rate limits.
     const now = Date.now(); let gate = gates.get(operation);
     if (!gate) { gate = { count: 0, since: now, active: false }; gates.set(operation, gate); }
     if (gate.active) throw new AppError('BUSY', 'A request is already in progress.', 429);
@@ -32,6 +33,7 @@ export async function handle<T>(request: Request, operation: 'intent' | 'quote' 
     let raw: unknown;
     try { raw = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new AppError('JSON', 'Invalid JSON.'); }
     const body = schema.safeParse(raw); if (!body.success) throw new AppError('BODY', 'Invalid request.');
+    await protectPublicApi(request, operation);
     return Response.json(await fn(body.data), { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     const error = e instanceof AppError ? e : new AppError('UNAVAILABLE', 'This service is temporarily unavailable. Try again.', 503);

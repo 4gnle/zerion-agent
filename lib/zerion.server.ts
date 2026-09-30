@@ -1,7 +1,7 @@
 import 'server-only';
 import { z } from 'zod';
 import type { Address } from 'viem';
-import { USDC } from './config';
+import { USDC, BASE_USDC } from './config';
 import { AppError } from './errors';
 import { eth } from './amounts';
 import { normalizeQuote } from './quote';
@@ -50,4 +50,23 @@ export async function getBridgeQuote(account: Address, amount: bigint) {
   const candidate = response.data.find(q => z.object({ attributes: z.object({ liquidity_source: z.object({ id: z.literal('lifi') }) }) }).safeParse(q).success);
   if (!candidate) throw new AppError('ROUTE', 'The Ethereum → Arbitrum bridge route is unavailable.', 503);
   return normalizeQuote(candidate, account, amount, { sell: 'eth', buy: 'eth' }, process.env.ZERION_BRIDGE_SOURCE_ID || '', Date.now(), true);
+}
+
+let baseAsset: string | undefined;
+export async function getBaseQuote(account: Address, amount: bigint) {
+  const ids = await resolveAssets();
+  if (!baseAsset) {
+    const result = z.object({ data: z.object({ id: z.string(), attributes: z.object({ implementations: z.array(z.object({ chain_id: z.string(), address: z.string().nullish(), decimals: z.number() })) }) }) }).parse(await zerionGet('/v1/fungibles/by-implementation', new URLSearchParams({ implementation: `base:${BASE_USDC}` })));
+    if (!result.data.attributes.implementations.some(i => i.chain_id === 'base' && i.address?.toLowerCase() === BASE_USDC.toLowerCase() && i.decimals === 6)) throw new AppError('METADATA', 'Base USDC metadata did not match.', 502);
+    baseAsset = result.data.id;
+  }
+  const response = z.object({ data: z.array(z.unknown()) }).parse(await zerionGet('/v1/swap/quotes/', new URLSearchParams({ currency: 'usd', from: account, to: account, 'input[chain_id]': 'arbitrum', 'input[fungible_id]': ids.sell, 'input[amount]': eth(amount), 'output[chain_id]': 'base', 'output[fungible_id]': baseAsset, slippage_percent: '0.5' })));
+  const candidate = response.data.find(q => z.object({ attributes: z.object({ liquidity_source: z.object({ id: z.literal('lifi') }) }) }).safeParse(q).success);
+  if (!candidate) throw new AppError('ROUTE', 'No combined Arbitrum → Base USDC route is available for this amount.');
+  return normalizeQuote(candidate, account, amount, { sell: ids.sell, buy: baseAsset }, process.env.ZERION_BRIDGE_SOURCE_ID || '', Date.now(), false, true);
+}
+export async function ethPrice() {
+  const schema = z.object({ data: z.object({ attributes: z.object({ market_data: z.object({ price: z.number().positive().finite() }) }) }) });
+  const data = schema.parse(await zerionGet('/v1/fungibles/eth', new URLSearchParams({ currency: 'usd' })));
+  return { price: data.data.attributes.market_data.price.toFixed(18), fetchedAt: Date.now() };
 }

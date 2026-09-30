@@ -5,7 +5,7 @@ import { assertSignable, type Quote } from './quote';
 import { publicClient, clientFor, readBalances } from './rpc';
 import { checkFreshBalance } from './amounts';
 import type { ReadyIntent } from './intent';
-export type Pending = { hash: Hash; chain: 1 | 42161; account: Address; sell: string; expected: string; source: string; minimum?: string; sourceConfirmed?: boolean; replaced?: boolean };
+export type Pending = { hash: Hash; chain: 1 | 42161; destination?: 8453; account: Address; sell: string; expected: string; source: string; minimum?: string; sourceConfirmed?: boolean; replaced?: boolean };
 function rejected(error: unknown): boolean {
   let value: unknown = error;
   for (let depth = 0; depth < 8 && value && typeof value === 'object'; depth++) {

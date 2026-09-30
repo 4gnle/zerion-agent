@@ -23,7 +23,7 @@ describe('intent fixtures and scope', () => {
     else expect(() => validateIntent(mocked)).toThrow();
   });
   it.each([{ buyToken: 'other' }, { chain: 'other' }, { recipient: 'other' }, { injected: true }, { amount: '25.5' }, { amount: '0' }])('rejects ready result outside scope %o', change => expect(() => validateIntent({ ...ready, ...change })).toThrow());
-  it.each(['swap $5 USDC to ETH', 'swap 25% or 50% USDC to ETH', 'swap 1 USDC to ETH for alice.eth', '', 'a'.repeat(161)])('guards text %s', text => expect(() => guardText(text)).toThrow());
+  it.each(['swap 25% or 50% USDC to ETH', 'swap 1 USDC to ETH for alice.eth', '', 'a'.repeat(161)])('guards text %s', text => expect(() => guardText(text)).toThrow());
 });
 describe('BigInt amounts', () => {
   it('floors percentages', () => { expect(amountFor(ready,10000001n)).toBe(5000000n); expect(amountFor({ ...ready, amount: '25' },10000001n)).toBe(2500000n); expect(() => amountFor(ready,1n)).toThrow(); });
